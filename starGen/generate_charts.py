@@ -24,6 +24,7 @@ import os
 import pandas as pd
 import numpy as np
 import matplotlib
+import csv
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from skyfield.api import load, wgs84, Star
@@ -34,7 +35,7 @@ DATA_DIR = os.path.join(SCRIPT_DIR, "data")
 BSP_PATH = os.path.join(DATA_DIR, "de421.bsp")
 STARS_PATH = os.path.join(DATA_DIR, "stars_slim.csv")
 
-MAG_LIMIT = 6.5  # naked-eye limit already baked into stars_slim.csv
+MAG_LIMIT = 4  # naked-eye limit already baked into stars_slim.csv
 
 
 def load_catalog():
