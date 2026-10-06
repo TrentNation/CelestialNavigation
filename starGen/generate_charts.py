@@ -4,7 +4,9 @@ Bulk night-sky star chart generator.
 
 Reads a CSV of (id, datetime_utc, latitude, longitude) rows and generates one
 unlabeled star chart PNG per row, showing the real naked-eye sky (~8,900 stars,
-mag <= 6.5) visible at that exact time and place.
+mag <= 6.5) visible at that exact time and place. A companion CSV is written
+for each chart with the plotted position and source catalog coordinates of
+every visible star.
 
 Usage:
     python3 generate_charts.py input.csv output_folder/
@@ -45,11 +47,16 @@ def load_catalog():
     earth = eph["earth"]
     # Build one big Star object for vectorized alt/az computation
     star_obj = Star(ra_hours=stars_df["ra"].values, dec_degrees=stars_df["dec"].values)
+    right_ascension = stars_df["ra"].values
+    declination = stars_df["dec"].values
     mags = stars_df["mag"].values
-    return eph, ts, earth, star_obj, mags
+    return eph, ts, earth, star_obj, mags, right_ascension, declination
 
 
-def render_chart(earth, ts, star_obj, mags, dt_utc, lat, lon, out_path, size_px=1200):
+def render_chart(
+    earth, ts, star_obj, mags, right_ascension, declination,
+    dt_utc, lat, lon, out_path, size_px=1200,
+):
     t = ts.utc(dt_utc.year, dt_utc.month, dt_utc.day,
                dt_utc.hour, dt_utc.minute, dt_utc.second)
     observer = earth + wgs84.latlon(lat, lon)
@@ -63,6 +70,8 @@ def render_chart(earth, ts, star_obj, mags, dt_utc, lat, lon, out_path, size_px=
     alt_v = alt_deg[visible]
     az_v = az_deg[visible]
     mag_v = mags[visible]
+    right_ascension_v = right_ascension[visible]
+    declination_v = declination[visible]
 
     # Marker size: brighter (lower mag) = bigger dot
     sizes = np.clip((MAG_LIMIT - mag_v) ** 2.2 * 1.1 + 0.3, 0.3, None)
@@ -108,6 +117,21 @@ def render_chart(earth, ts, star_obj, mags, dt_utc, lat, lon, out_path, size_px=
     )
     plt.close(fig)
 
+    star_csv_path = os.path.splitext(out_path)[0] + ".csv"
+    star_data = pd.DataFrame({
+        # pos is the same polar position used by matplotlib: azimuth in
+        # degrees clockwise from north and radial distance from zenith.
+        "pos": [f"azimuth={azimuth:.6f}, radial={90 - altitude:.6f}"
+                for azimuth, altitude in zip(az_v, alt_v)],
+        "brightness": mag_v,
+        "declination": declination_v,
+        "right_ascension": right_ascension_v,
+        "altitude_degrees": alt_v,
+        "azimuth_degrees": az_v,
+    })
+    star_data.to_csv(star_csv_path, index=False)
+    return star_csv_path
+
 
 
 def main():
@@ -123,19 +147,19 @@ def main():
     rows["datetime_utc"] = pd.to_datetime(rows["datetime_utc"])
 
     print(f"Loading star catalog and ephemeris...")
-    eph, ts, earth, star_obj, mags = load_catalog()
+    eph, ts, earth, star_obj, mags, right_ascension, declination = load_catalog()
 
     print(f"Generating {len(rows)} charts...")
     for i, row in rows.iterrows():
         out_path = os.path.join(out_dir, f"{row['id']}.png")
-        render_chart(
-            earth, ts, star_obj, mags,
+        star_csv_path = render_chart(
+            earth, ts, star_obj, mags, right_ascension, declination,
             row["datetime_utc"].to_pydatetime(),
             float(row["latitude"]),
             float(row["longitude"]),
             out_path,
         )
-        print(f"  [{i+1}/{len(rows)}] {row['id']} -> {out_path}")
+        print(f"  [{i+1}/{len(rows)}] {row['id']} -> {out_path}, {star_csv_path}")
 
     print("Done.")
 
